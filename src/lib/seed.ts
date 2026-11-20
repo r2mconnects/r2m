@@ -45,57 +45,58 @@ export function ensureSeed() {
   if (!seeded) {
     seeded = run().catch((e) => {
       seeded = null;
-      console.error("seed failed", e);
+      throw e;
     });
   }
   return seeded;
 }
 
 async function run() {
-  const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(roles);
-  if (n >= ROLE_DEFS.length) return;
-
-  for (const r of ROLE_DEFS) {
-    await db
-      .insert(roles)
-      .values({ key: r.key, name: r.name, description: r.description, scope: r.scope, level: r.level, permissions: r.permissions, isSystem: true })
-      .onConflictDoNothing();
-  }
-
-  const [{ d }] = await db.select({ d: sql<number>`count(*)::int` }).from(districts);
-  if (d === 0) {
-    let i = 0;
-    for (const [name, ms] of Object.entries(GEO)) {
-      const [row] = await db.insert(districts).values({ name, sortOrder: i++ }).returning();
-      await db.insert(mandals).values(ms.map((m) => ({ districtId: row.id, name: m })));
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(7003)`);
+    const [done] = await tx.select().from(associationSettings).where(eq(associationSettings.key, "seeded")).limit(1);
+    if (done?.value === true) return;
+    for (const r of ROLE_DEFS) {
+      await tx
+        .insert(roles)
+        .values({ key: r.key, name: r.name, description: r.description, scope: r.scope, level: r.level, permissions: r.permissions, isSystem: true })
+        .onConflictDoNothing();
     }
-  }
 
-  const [{ c }] = await db.select({ c: sql<number>`count(*)::int` }).from(productCategories);
-  if (c === 0) {
-    let i = 0;
-    for (const [parent, kids] of Object.entries(CATEGORIES)) {
-      const [p] = await db.insert(productCategories).values({ name: parent, slug: slugify(parent), sortOrder: i++ }).returning();
-      let j = 0;
-      for (const k of kids) {
-        await db.insert(productCategories).values({ name: k, slug: slugify(k), parentId: p.id, sortOrder: j++ }).onConflictDoNothing();
+    const [{ d }] = await tx.select({ d: sql<number>`count(*)::int` }).from(districts);
+    if (d === 0) {
+      let i = 0;
+      for (const [name, ms] of Object.entries(GEO)) {
+        const [row] = await tx.insert(districts).values({ name, sortOrder: i++ }).returning();
+        await tx.insert(mandals).values(ms.map((m) => ({ districtId: row.id, name: m })));
       }
     }
-  }
 
-  const [{ s }] = await db.select({ s: sql<number>`count(*)::int` }).from(welfareSchemes);
-  if (s === 0) {
-    await db.insert(welfareSchemes).values(
-      SCHEMES.map(([name, category]) => ({ name, category, approvalLevels: ["welfare_officer"], description: `${name} for association members.` })),
-    );
-  }
+    const [{ c }] = await tx.select({ c: sql<number>`count(*)::int` }).from(productCategories);
+    if (c === 0) {
+      let i = 0;
+      for (const [parent, kids] of Object.entries(CATEGORIES)) {
+        const [p] = await tx.insert(productCategories).values({ name: parent, slug: slugify(parent), sortOrder: i++ }).returning();
+        let j = 0;
+        for (const k of kids) {
+          await tx.insert(productCategories).values({ name: k, slug: slugify(k), parentId: p.id, sortOrder: j++ }).onConflictDoNothing();
+        }
+      }
+    }
 
-  const [{ p }] = await db.select({ p: sql<number>`count(*)::int` }).from(membershipPlans);
-  if (p === 0) {
-    // Fees are intentionally 0: the Main Admin configures real prices under Plans & Cards.
-    await db.insert(membershipPlans).values({ name: "Standard Membership", validityMonths: 12 });
-  }
+    const [{ s }] = await tx.select({ s: sql<number>`count(*)::int` }).from(welfareSchemes);
+    if (s === 0) {
+      await tx.insert(welfareSchemes).values(
+        SCHEMES.map(([name, category]) => ({ name, category, approvalLevels: ["welfare_officer"], description: `${name} for association members.` })),
+      );
+    }
 
-  await db.insert(associationSettings).values({ key: "seeded", value: true }).onConflictDoNothing();
-  void eq;
+    const [{ p }] = await tx.select({ p: sql<number>`count(*)::int` }).from(membershipPlans);
+    if (p === 0) {
+      // Fees are intentionally 0: the Main Admin configures real prices under Plans & Cards.
+      await tx.insert(membershipPlans).values({ name: "Standard Membership", validityMonths: 12 });
+    }
+
+    await tx.insert(associationSettings).values({ key: "seeded", value: true }).onConflictDoNothing();
+  });
 }

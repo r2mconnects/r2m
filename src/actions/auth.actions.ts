@@ -121,6 +121,7 @@ export async function resetPasswordAction(fd: FormData) {
 export async function setupAdminAction(fd: FormData) {
   await ensureSeed();
   const required = process.env.ADMIN_SETUP_TOKEN;
+  if (!required && process.env.NODE_ENV === "production") flash("/setup", "err", "Set ADMIN_SETUP_TOKEN on the server before creating the Main Admin.");
   if (required && str(fd, "setupToken") !== required) flash("/setup", "err", "Invalid setup token.");
   const pw = String(fd.get("password") ?? "");
   const problem = passwordProblem(pw);

@@ -6,7 +6,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:init": "node scripts/init-db.mjs",
+    "db:local": "node scripts/local-db.mjs"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.6",
@@ -30,6 +32,7 @@
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "drizzle-kit": "0.31.10",
+    "embedded-postgres": "^18.7.0-beta.19",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
     "postcss": "8.5.8",
