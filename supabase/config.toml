@@ -1,0 +1,9 @@
+# Supabase CLI config (optional — used with `supabase db push` or the SQL editor)
+[api]
+enabled = true
+[db]
+major_version = 15
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+enable_signup = false
