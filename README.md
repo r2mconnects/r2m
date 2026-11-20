@@ -32,12 +32,25 @@ Built with Next.js 16 (App Router), TypeScript, Tailwind CSS, Drizzle ORM + Post
 * **Logo:** a vector R2M CONNECT mark is rendered by `src/components/shared/Logo.tsx`. Replace it with your exact artwork there (and `public/icons/icon.svg`) if desired.
 * Not included: villages table (village is free text), training courses/partners/offers tables, PDF reports (CSV only; use browser Print for PDF).
 
+## Run a local preview without cloud credentials
+
+With Node 22 and a non-root user, run `npm ci`, then `npm run db:local` in one terminal. This starts a loopback-only development PostgreSQL instance and initializes all 42 tables. Leave it running. In a second terminal:
+
+```bash
+set -a
+. .data/dev/database.env
+set +a
+npm run dev
+```
+
+Open `/setup` to bootstrap your local administrator. Set `ADMIN_SETUP_TOKEN` before exposing the app to other people. Local data is separate from hosted Supabase and is not synchronized. Keep `.data/` private and outside version control. For hosted deployment, use the server environment described below instead of `db:local`.
+
 ## Setup
 
 ```bash
 npm install
 cp .env.example .env            # fill DATABASE_URL, APP_URL, Razorpay etc.
-npx drizzle-kit push            # create tables
+npm run db:init                 # create tables atomically; restrict direct API access
 npm run build && npm start
 ```
 1. Open the app → **Create the Main Admin** at `/setup` (or `ADMIN_NAME=… ADMIN_EMAIL=… ADMIN_PASSWORD=… node scripts/create-admin.mjs`).
@@ -52,7 +65,15 @@ Set `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`; add web
 ### Scheduled reminders
 Call `GET /api/notifications/cron` daily with `Authorization: Bearer $CRON_SECRET` (Vercel Cron works), or press the button in Admin → Notifications.
 
-## Supabase SQL (run manually, in order)
+## Connecting the app to hosted Supabase Postgres
+
+In Supabase → Connect, copy the **session pooler** connection string for project `zambbztjjovdtuanemjr`. Set it as `DATABASE_URL` in the server environment (or `.env` for the setup commands), with the URL-encoded database password and TLS enabled. Use the database owner for initialization and a trusted server connection with access under RLS for runtime. Never put this URL in a `NEXT_PUBLIC_` variable. No Supabase API keys are required for this mode.
+
+Run `npm run db:init` and set `ADMIN_SETUP_TOKEN` before deployment. The initializer completes all 42 tables, including any auth tables already provisioned. Visit `/setup` to seed roles, locations, categories, schemes and a membership plan, then create the first administrator. Check `/api/health` for DB connectivity, then verify login, member registration, staff review and logout using `tests/CHECKLIST.md`.
+
+**Data flow:** browser form → Next.js server action → session/role and area checks → Drizzle transaction → Supabase Postgres. Account credentials and sessions stay server-side. Membership applications feed staff review; approved members proceed to fees/renewal and card issuance. Welfare reviews, payment verification and shop orders use their own tables and permissions.
+
+## Alternative Supabase API package (not used by the server-session app)
 `0001_schema.sql` → `0002_functions_triggers.sql` → `0003_rls.sql` → `0004_storage.sql` → `0005_seed.sql`.
 All are non-destructive (IF NOT EXISTS / drop-policy-if-exists only). They never drop tables or data.
 
@@ -67,4 +88,4 @@ All are non-destructive (IF NOT EXISTS / drop-policy-if-exists only). They never
 See `tests/CHECKLIST.md`.
 
 ## Deployment
-Vercel/any Node host: set env vars, run `npx drizzle-kit push` once, `npm run build`. Persist `UPLOAD_DIR`. Set `NEXT_PUBLIC_APP_URL` to the public HTTPS origin (QR codes use it) and (behind HTTPS) keep secure cookies on.
+Vercel/any Node host: set env vars, run `npm run db:init` once, `npm run build`. Persist `UPLOAD_DIR`. Set `NEXT_PUBLIC_APP_URL` to the public HTTPS origin (QR codes use it) and (behind HTTPS) keep secure cookies on.
